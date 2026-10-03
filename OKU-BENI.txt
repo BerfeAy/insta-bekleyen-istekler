@@ -1,0 +1,8 @@
+EXE OLUSTURMA (Windows)
+1) https://nodejs.org adresinden Node.js (LTS) kur.
+2) Bu klasorun icinde bos bir yere Shift + sag tik -> "Terminalde ac" (veya CMD ac, cd ile bu klasore gel).
+3) Sirayla calistir:
+     npm install
+     npm run build
+4) dist klasorunde BekleyenIstekler.exe olusur. Cift tikla, calisir.
+Denemek icin (exe olusturmadan): npm start

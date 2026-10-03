@@ -1,0 +1,20 @@
+{
+  "name": "bekleyen-istekler",
+  "version": "1.0.0",
+  "description": "Instagram bekleyen takip istekleri listesi",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "local.bekleyen.istekler",
+    "productName": "BekleyenIstekler",
+    "files": ["main.js", "index.html"],
+    "win": { "target": "portable" }
+  }
+}

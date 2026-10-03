@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Bekleyen takip istekleri</title>
+<style>
+:root{--bg:#f5f3ef;--fg:#1c1b19;--mut:#77736b;--line:#dcd8cf;--card:#fff;--ac:#c2185b;--acf:#fff;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#151412;--fg:#f0ede6;--mut:#9a958a;--line:#2c2a26;--card:#1d1c19;--ac:#ee6a9c;--acf:#151412}}
+:root[data-theme="dark"]{--bg:#151412;--fg:#f0ede6;--mut:#9a958a;--line:#2c2a26;--card:#1d1c19;--ac:#ee6a9c;--acf:#151412}
+*{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:720px;margin:0 auto;padding:40px 20px 80px}
+h1{font-size:clamp(30px,6vw,44px);line-height:1.1;letter-spacing:-.03em;margin:0 0 12px}
+p{color:var(--mut);margin:0 0 16px;max-width:60ch}
+ol{color:var(--mut);padding-left:20px;margin:0 0 24px}
+ol li{margin-bottom:6px}
+.drop{display:block;border:1.5px dashed var(--line);border-radius:14px;padding:28px;text-align:center;cursor:pointer;background:var(--card)}
+.drop:hover,.drop.on{border-color:var(--ac)}
+.drop input{display:none}
+button,.btn{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--fg);padding:9px 16px;border-radius:999px;cursor:pointer}
+button.pri{background:var(--ac);color:var(--acf);border-color:var(--ac);font-weight:600}
+button:disabled{opacity:.45;cursor:default}
+button:focus-visible,input:focus-visible,a:focus-visible,.drop:focus-within{outline:2px solid var(--ac);outline-offset:2px}
+#app{display:none}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:24px 0 12px}
+.bar input[type=search]{flex:1 1 180px;font:inherit;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg)}
+.count{color:var(--mut);font-size:14px;margin-bottom:8px}
+ul{list-style:none;margin:0;padding:0;border-top:1px solid var(--line)}
+li.row{display:flex;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+li.row input{width:18px;height:18px;accent-color:var(--ac);flex:none}
+.who{flex:1;min-width:0}
+.who b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.who span{font-size:13px;color:var(--mut)}
+li.row a{color:var(--ac);text-decoration:none;font-weight:600;white-space:nowrap}
+li.done .who b{text-decoration:line-through;color:var(--mut)}
+.err{color:var(--ac);margin-top:12px}
+.note{font-size:14px;margin-top:28px}
+</style>
+</head>
+<body>
+<main>
+<h1>Cevapsız takip isteklerin</h1>
+<p>Instagram'ın verdiği veri dosyasını yükle, bekleyen isteklerin listesi çıksın. Dosya sadece tarayıcında okunur, hiçbir yere gönderilmez.</p>
+
+<ol>
+<li>Instagram → Hesap merkezi → Bilgilerin ve izinlerin → <b>Bilgilerini indir</b></li>
+<li>Bilgilerin bir kısmını seç → <b>Takipçiler ve takip edilenler</b> → Biçim: <b>JSON</b></li>
+<li>İnen zip'ten <b>followers_and_following/pending_follow_requests.json</b> dosyasını aşağıya bırak</li>
+</ol>
+
+<label class="drop" id="drop">
+<input type="file" id="file" accept=".json,application/json">
+<b>pending_follow_requests.json</b> dosyasını seç ya da buraya sürükle
+</label>
+<div class="err" id="err"></div>
+
+<section id="app">
+<div class="bar">
+<input type="search" id="q" placeholder="Kullanıcı adı ara" aria-label="Ara">
+<button id="sort">Sıra: en eski önce</button>
+</div>
+<div class="bar">
+<button id="all">Görünenlerin hepsini seç</button>
+<button id="none">Seçimi kaldır</button>
+<button class="pri" id="next" disabled>Seçilenlerden sıradakini aç</button>
+<button id="mark" disabled>Seçilenleri geri çekildi say</button>
+</div>
+<div class="count" id="count"></div>
+<ul id="list"></ul>
+<p class="note">Profil yeni sekmede açılır; orada <b>İstek gönderildi</b> butonuna basıp <b>İsteği geri çek</b>'i seçersin. Geri çektikçe buradaki satırı işaretle, listeyi kaybetmezsin (bu cihazda hatırlanır).</p>
+</section>
+</main>
+
+<script>
+(function(){
+var items=[],sel={},done={},asc=true,cursor=0;
+var $=function(i){return document.getElementById(i)};
+var KEY="pending_done_v1";
+try{done=JSON.parse(localStorage.getItem(KEY)||"{}")}catch(e){done={}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(done))}catch(e){}}
+
+function collect(node,out){
+  if(Array.isArray(node)){node.forEach(function(n){collect(n,out)});return}
+  if(node&&typeof node==="object"){
+    if(Array.isArray(node.string_list_data)){
+      node.string_list_data.forEach(function(s){
+        var u=s.value||(s.href||"").split("/").filter(Boolean).pop();
+        if(u)out.push({u:u,t:s.timestamp||0});
+      });
+    } else Object.keys(node).forEach(function(k){collect(node[k],out)});
+  }
+}
+function load(text){
+  $("err").textContent="";
+  try{
+    var out=[];collect(JSON.parse(text),out);
+    var seen={};items=out.filter(function(x){if(seen[x.u])return false;seen[x.u]=1;return true});
+    if(!items.length)throw new Error("empty");
+    sel={};cursor=0;$("app").style.display="block";render();
+  }catch(e){$("err").textContent="Bu dosyadan istek listesi okunamadı. JSON biçiminde indirdiğinden ve pending_follow_requests.json dosyasını seçtiğinden emin ol."}
+}
+function fmt(t){return t?new Date(t*1000).toLocaleDateString("tr-TR",{day:"numeric",month:"long",year:"numeric"}):"Tarih yok"}
+function visible(){
+  var q=$("q").value.trim().toLowerCase();
+  return items.filter(function(x){return !q||x.u.toLowerCase().indexOf(q)>-1})
+    .sort(function(a,b){return asc?a.t-b.t:b.t-a.t});
+}
+function render(){
+  var v=visible(),ul=$("list");ul.innerHTML="";
+  v.forEach(function(x){
+    var li=document.createElement("li");li.className="row"+(done[x.u]?" done":"");
+    var cb=document.createElement("input");cb.type="checkbox";cb.checked=!!sel[x.u];cb.setAttribute("aria-label",x.u+" seç");
+    cb.onchange=function(){sel[x.u]=cb.checked;upd()};
+    var w=document.createElement("div");w.className="who";
+    var b=document.createElement("b");b.textContent="@"+x.u;
+    var s=document.createElement("span");s.textContent="İstek: "+fmt(x.t)+(done[x.u]?" · geri çekildi":"");
+    w.appendChild(b);w.appendChild(s);
+    var a=document.createElement("a");a.href="https://www.instagram.com/"+encodeURIComponent(x.u)+"/";a.target="_blank";a.rel="noopener noreferrer";a.textContent="Profili aç";
+    li.appendChild(cb);li.appendChild(w);li.appendChild(a);ul.appendChild(li);
+  });
+  upd(v);
+}
+function upd(v){
+  v=v||visible();
+  var n=Object.keys(sel).filter(function(k){return sel[k]}).length;
+  var d=Object.keys(done).filter(function(k){return done[k]}).length;
+  $("count").textContent=items.length+" bekleyen istek · "+v.length+" görünüyor · "+n+" seçili · "+d+" geri çekildi";
+  $("next").disabled=!n;$("mark").disabled=!n;
+}
+function chosen(){return visible().filter(function(x){return sel[x.u]})}
+$("q").oninput=render;
+$("sort").onclick=function(){asc=!asc;$("sort").textContent="Sıra: "+(asc?"en eski önce":"en yeni önce");render()};
+$("all").onclick=function(){visible().forEach(function(x){sel[x.u]=true});render()};
+$("none").onclick=function(){sel={};render()};
+$("next").onclick=function(){
+  var c=chosen();if(!c.length)return;
+  if(cursor>=c.length)cursor=0;
+  window.open("https://www.instagram.com/"+encodeURIComponent(c[cursor].u)+"/","_blank","noopener");
+  cursor++;
+  $("next").textContent="Sıradakini aç ("+Math.min(cursor+1,c.length)+"/"+c.length+")";
+};
+$("mark").onclick=function(){
+  chosen().forEach(function(x){done[x.u]=true;sel[x.u]=false});
+  save();cursor=0;$("next").textContent="Seçilenlerden sıradakini aç";render();
+};
+$("file").onchange=function(e){var f=e.target.files[0];if(f)f.text().then(load)};
+var d=$("drop");
+["dragover","dragenter"].forEach(function(n){d.addEventListener(n,function(e){e.preventDefault();d.classList.add("on")})});
+["dragleave","drop"].forEach(function(n){d.addEventListener(n,function(e){e.preventDefault();d.classList.remove("on")})});
+d.addEventListener("drop",function(e){var f=e.dataTransfer.files[0];if(f)f.text().then(load)});
+})();
+</script>
+</body>
+</html>
